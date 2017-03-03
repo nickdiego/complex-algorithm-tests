@@ -38,6 +38,42 @@ Project g_projects[] = {
   { .workload = 60, .value = 50, .name = "F" },
 };
 
+struct Node
+{
+  Node(Project *p = nullptr) :
+    project(p),
+    connections() {}
+
+  //attributes
+  Project *project;
+  vector<Node*> connections;
+};
+
+Node* buildGraph(Project projects[])
+{
+  Node* root = new Node();
+  // Create corresponding nodes for each project entry
+  for (int i = 0; i < PROJ_AMOUNT; ++i) {
+    root->connections.push_back(new Node(projects + i));
+  }
+
+  // Connect nodes with each other, representing the
+  // possible combinations among all the project entries.
+  // Each project can be combined with all the subsequent
+  // projects in the list
+  auto end = root->connections.end();
+  for (auto source = root->connections.begin(); source != end; ++source) {
+    TRACE("%s:", (*source)->project->name);
+    for (auto target = source+1; target != end; ++target) {
+      (*source)->connections.push_back(*target);
+      TRACE(" %s", (*target)->project->name);
+    }
+    TRACE("\n");
+  }
+
+  return root;
+}
+
 struct Combination {
   Combination() :
     value(0),
@@ -111,10 +147,14 @@ void checkCombinations(Combination &curr, Combination &result)
 
 int main()
 {
+#if 0
   Combination comb, result;
   checkCombinations(comb, result);
   printf("\n\n -----> Optimal choice: %s\n", result.toString().c_str());
-
+#else
+  Node *root = buildGraph(g_projects);
+  delete root;
+#endif
   return 0;
 }
 
