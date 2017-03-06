@@ -1,9 +1,8 @@
-#include <vector>
-#include <iostream>
+#include <list>
 #include <sstream>
 #include <iomanip>
-#include <cassert>
 #include <cstdio>
+#include <cstdint>
 
 #if 1
 #define PROJ_AMOUNT 5
@@ -14,14 +13,10 @@
 #endif
 
 #if ENABLE_DEBUG
-#define TRACE(...) fprintf(stderr, __VA_ARGS__)
+#define TRACE(...) fprintf(stdout, __VA_ARGS__)
 #else
 #define TRACE(...)
 #endif
-
-using std::vector;
-using std::cout;
-using std::endl;
 
 struct Project {
   int workload;
@@ -38,83 +33,88 @@ Project g_projects[] = {
   { .workload = 60, .value = 50, .name = "F" },
 };
 
-struct Combination {
-  Combination() :
-    value(0),
-    workload(0),
-    projects() {}
-
-  int depth() const
-  {
-    return (projects.size() == 0) ? 0 :
-      projects.back() - g_projects + 1;
-  }
-
-  void push(Project *p) {
-    assert(p != nullptr);
-    value += p->value;
-    workload += p->workload;
-    projects.push_back(p);
-  }
-
-  void pop() {
-    if (projects.size() == 0)
-      return;
-    Project *p = projects.back();
-    value -= p->value;
-    workload -= p->workload;
-    projects.pop_back();
-  }
-
-  std::string toString()
-  {
-    std::ostringstream stream;
-    stream << "(workload=" << std::setw(3) << workload
-      << " value=" << std::setw(3) << value << ") -> [";
-    for (auto& p: projects)
-      stream << " " << p->name;
-    stream << " ]";
-    return stream.str();
-  }
-
-  int value;
-  int workload;
-  vector<Project *> projects;
-};
-
-// Used C++ non-const references here instead of local
-// instances + returning Combination object just to save
-// some allocations and copy constructions. A single
-// Combination is used to generate (push/pop) all combinations
-// and result ref is used to store the current combination
-// with optimal value/workload combination, which is used
-// in the end as the and result of the algorithm.
-void checkCombinations(Combination &curr, Combination &result)
+class Permuter
 {
-  if (curr.workload > MAX_WORKLOAD)
-    return;
-
-  int depth = curr.depth();
-  if (depth > 0) {
-    TRACE("%s() depth=%d %s\n", __FUNCTION__,
-        depth, curr.toString().c_str());
+public:
+  Permuter(Project p[], int projAmount, int maxWL) :
+    m_projects(p),
+    m_bits(0),
+    m_perm(),
+    kBitAmount(projAmount),
+    kMaxWorkload(maxWL),
+    kMaxBitValue(~((BitSet)~0 << kBitAmount))
+  {
+    TRACE("maxbitval=%lx\n", kMaxBitValue);
   }
-  if (curr.value > result.value)
-    result = curr;
 
-  for (int i = depth; i < PROJ_AMOUNT; ++i) {
-    curr.push(&g_projects[i]);
-    checkCombinations(curr, result);
-    curr.pop();
+  // Choose the best project`s permutation,
+  // optimizing the `total value` delvered and
+  // considering the max workload of the team.
+  // Non-recursive -- Complexity = O(2^n)
+  // Where N is the projects amount
+  void process()
+  {
+    Permutation optimal;
+    while (next()) {
+      if (m_perm.workload > kMaxWorkload)
+        continue;
+      TRACE("%s() %s\n", __FUNCTION__, m_perm.toString().c_str());
+      if (m_perm.value > optimal.value)
+        optimal = m_perm;
+    }
+    printf("\n\n-----> Optimal choice: %s\n", optimal.toString().c_str());
   }
-}
+
+  bool next()
+  {
+    if (++m_bits > kMaxBitValue)
+      return false;
+    m_perm.workload = m_perm.value = 0;
+    m_perm.projects.clear();
+    for (int i = 0; i < kBitAmount; ++i) {
+      if (m_bits & ((BitSet)1 << i)) {
+        m_perm.workload += m_projects[i].workload;
+        m_perm.value += m_projects[i].value;
+        m_perm.projects.push_back(m_projects + i);
+      }
+    }
+    return true;
+  }
+
+private:
+  typedef uint64_t BitSet;
+  struct Permutation {
+    Permutation() :
+      projects(), value(0), workload(0)
+    {}
+    std::list<Project*> projects;
+    int value;
+    int workload;
+    std::string toString()
+    {
+      std::ostringstream pstr;
+      pstr << "(workload=" << std::setw(3) << workload
+        << " value=" << std::setw(3) << value << ") -> [";
+      for (auto &p: projects) pstr << " " << p->name;
+      pstr << " ]";
+      return pstr.str();
+    }
+  };
+
+private:
+  Project *m_projects;
+  BitSet m_bits;
+  Permutation m_perm;
+
+  const int kBitAmount;
+  const int kMaxWorkload;
+  const BitSet kMaxBitValue;
+};
 
 int main()
 {
-  Combination comb, result;
-  checkCombinations(comb, result);
-  printf("\n\n -----> Optimal choice: %s\n", result.toString().c_str());
-
+  Permuter permuter(g_projects, PROJ_AMOUNT, MAX_WORKLOAD);
+  permuter.process();
   return 0;
 }
 
